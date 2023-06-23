@@ -48,8 +48,7 @@ def _load_cls(module_path: str, cls_name: str) -> Any:
     """
 
     module_path_fixed = module_path
-    if module_path_fixed.endswith(".py"):
-        module_path_fixed = module_path_fixed[:-3]
+    module_path_fixed = module_path_fixed.removesuffix(".py")
     module_path_fixed = module_path_fixed.replace("/", ".")
 
     module = importlib.import_module(module_path_fixed)
@@ -57,13 +56,11 @@ def _load_cls(module_path: str, cls_name: str) -> Any:
     rreload(module)
     module = importlib.reload(module)
 
-    assert hasattr(module, cls_name), "{} file should contain {} class".format(
-        module_path, cls_name
-    )
+    assert hasattr(
+        module, cls_name
+    ), f"{module_path} file should contain {cls_name} class"
 
-    cls = getattr(module, cls_name)
-
-    return cls
+    return getattr(module, cls_name)
 
 
 def load_config_py(config_path: str, config_name: str = "Config"):
@@ -108,13 +105,13 @@ def convert_cfg_to_nested_dictionary(cfg: ConfigProblemBase) -> dict:
         if k.startswith("_"):
             continue
 
-        if any([x in k for x in ["api"]]):
+        if any(x in k for x in ["api"]):
             continue
 
         type_annotation = type_annotations[k]
 
         if type_annotation in KNOWN_TYPE_ANNOTATIONS:
-            grouped_cfg_dict.update({k: v})
+            grouped_cfg_dict[k] = v
         elif dataclasses.is_dataclass(v):
             group_items = parse_cfg_dataclass(cfg=v)
             group_items = {
@@ -122,10 +119,9 @@ def convert_cfg_to_nested_dictionary(cfg: ConfigProblemBase) -> dict:
                 for d in group_items
                 for k, v in d.items()
             }
-            grouped_cfg_dict.update({k: group_items})
+            grouped_cfg_dict[k] = group_items
         else:
-            raise _get_type_annotation_error(v, type_annotations[k])
-
+            raise _get_type_annotation_error(v, type_annotation)
     return grouped_cfg_dict
 
 
@@ -147,8 +143,7 @@ def parse_cfg_dataclass(cfg: ConfigProblemBase) -> List[Dict]:
 
     items = []
 
-    parent_element = get_parent_element(cfg)
-    if parent_element:
+    if parent_element := get_parent_element(cfg):
         items.append(parent_element)
 
     cfg_dict = cfg.__dict__
@@ -159,7 +154,7 @@ def parse_cfg_dataclass(cfg: ConfigProblemBase) -> List[Dict]:
         if k.startswith("_"):
             continue
 
-        if any([x in k for x in ["api"]]):
+        if any(x in k for x in ["api"]):
             continue
 
         type_annotation = type_annotations[k]
@@ -206,25 +201,38 @@ def load_config_yaml(path: str) -> ConfigProblemBase:
     with open(path, "r") as fp:
         cfg_dict = yaml.load(fp, Loader=yaml.FullLoader)
 
-    cfg = ConfigProblemBase(
+    return ConfigProblemBase(
         output_directory=cfg_dict.get(
             "output_directory", ConfigProblemBase.output_directory
         ),
-        experiment_name=cfg_dict.get("experiment_name", generate_experiment_name()),
-        llm_backbone=cfg_dict.get("llm_backbone", ConfigProblemBase.llm_backbone),
-        dataset=ConfigNLPCausalLMDataset.from_dict(cfg_dict.get("dataset", {})),
-        tokenizer=ConfigNLPCausalLMTokenizer.from_dict(cfg_dict.get("tokenizer", {})),
-        augmentation=ConfigNLPAugmentation.from_dict(cfg_dict.get("augmentation", {})),
+        experiment_name=cfg_dict.get(
+            "experiment_name", generate_experiment_name()
+        ),
+        llm_backbone=cfg_dict.get(
+            "llm_backbone", ConfigProblemBase.llm_backbone
+        ),
+        dataset=ConfigNLPCausalLMDataset.from_dict(
+            cfg_dict.get("dataset", {})
+        ),
+        tokenizer=ConfigNLPCausalLMTokenizer.from_dict(
+            cfg_dict.get("tokenizer", {})
+        ),
+        augmentation=ConfigNLPAugmentation.from_dict(
+            cfg_dict.get("augmentation", {})
+        ),
         architecture=ConfigNLPCausalLMArchitecture.from_dict(
             cfg_dict.get("architecture", {})
         ),
-        training=ConfigNLPCausalLMTraining.from_dict(cfg_dict.get("training", {})),
+        training=ConfigNLPCausalLMTraining.from_dict(
+            cfg_dict.get("training", {})
+        ),
         prediction=ConfigNLPCausalLMPrediction.from_dict(
             cfg_dict.get("prediction", {})
         ),
         environment=ConfigNLPCausalLMEnvironment.from_dict(
             cfg_dict.get("environment", {})
         ),
-        logging=ConfigNLPCausalLMLogging.from_dict(cfg_dict.get("logging", {})),
+        logging=ConfigNLPCausalLMLogging.from_dict(
+            cfg_dict.get("logging", {})
+        ),
     )
-    return cfg

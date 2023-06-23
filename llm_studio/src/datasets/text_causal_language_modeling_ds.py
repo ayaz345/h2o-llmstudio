@@ -30,10 +30,10 @@ class CustomDataset(Dataset):
 
         self.indices = np.arange(len(self.df))
 
-        assert self.mode in [
+        assert self.mode in {
             "train",
             "validation",
-        ], f"There is no {self.mode} for the datasets"
+        }, f"There is no {self.mode} for the datasets"
 
         # Get the labels
         has_all_columns = cfg.dataset.answer_column in self.df.columns
@@ -45,19 +45,11 @@ class CustomDataset(Dataset):
             )
 
         if not has_all_columns or has_missing_values:
-            if has_missing_values:
-                message = (
-                    f"The {self.mode} DataFrame"
-                    f" column {cfg.dataset.answer_column}"
-                    " contain missing values."
-                )
-            else:
-                message = (
-                    f"The {self.mode} DataFrame "
-                    "does not contain the required column:"
-                    f" {cfg.dataset.answer_column}."
-                )
-
+            message = (
+                f"The {self.mode} DataFrame column {cfg.dataset.answer_column} contain missing values."
+                if has_missing_values
+                else f"The {self.mode} DataFrame does not contain the required column: {cfg.dataset.answer_column}."
+            )
             raise ValueError(message)
 
         self.tokenizer = get_tokenizer(cfg)
@@ -244,7 +236,7 @@ class CustomDataset(Dataset):
         return output
 
     def postprocess_output(self, cfg, df: pd.DataFrame, output: Dict) -> Dict:
-        if not cfg.prediction.metric == "Perplexity":
+        if cfg.prediction.metric != "Perplexity":
             output = self.clean_output(output, self.prompts, cfg)
 
         output["target_text"] = self.answers
@@ -280,7 +272,7 @@ class CustomDataset(Dataset):
 
         output.pop("target_text", None)
 
-        if "predicted_text" in output.keys():
+        if "predicted_text" in output:
             output["predicted_text"] = np.array(output["predicted_text"])
 
         if isinstance(cfg.dataset.prompt_column, tuple):
@@ -289,7 +281,7 @@ class CustomDataset(Dataset):
         else:
             output[cfg.dataset.prompt_column] = df[cfg.dataset.prompt_column].values
 
-        if "predicted_text" in output.keys():
+        if "predicted_text" in output:
             df[f"pred_{cfg.dataset.answer_column}"] = output["predicted_text"]
 
         return output, df
@@ -303,7 +295,6 @@ class CustomDataset(Dataset):
 
     def __getitem__(self, idx: int) -> Dict:
         """Reads a single text observation."""
-        sample = dict()
         prompt_encoding, answer_encoding = self._get_prompt_and_answer_encoding(idx)
         rlhf_is_in_training_mode = self.cfg.training.use_rlhf and self.mode == "train"
 
@@ -318,10 +309,10 @@ class CustomDataset(Dataset):
         )
         encodings = parent_encodings + encodings
 
-        sample["reward_model_prompt_text"] = (
-            reward_model_parent_prompt_text + self.raw_prompts[idx]
-        )
-
+        sample = {
+            "reward_model_prompt_text": reward_model_parent_prompt_text
+            + self.raw_prompts[idx]
+        }
         input_ids = torch.cat([torch.cat(encoding) for encoding in encodings])
         if not rlhf_is_in_training_mode:  # no labels required for RLHF during training
             labels = input_ids.clone()
@@ -349,13 +340,11 @@ class CustomDataset(Dataset):
             sample["labels"] = torch.full((self.cfg.tokenizer.max_length,), -100)
             sample["labels"][-len(labels) :] = labels
 
-        sample.update(
-            self.pad_tokens(
-                input_ids,
-                attention_mask=torch.ones_like(input_ids),
-                max_length=self.cfg.tokenizer.max_length,
-                pad_token_id=self.tokenizer.pad_token_id,
-            )
+        sample |= self.pad_tokens(
+            input_ids,
+            attention_mask=torch.ones_like(input_ids),
+            max_length=self.cfg.tokenizer.max_length,
+            pad_token_id=self.tokenizer.pad_token_id,
         )
 
         # Remove last answer from encoding to create the prompt for inference
